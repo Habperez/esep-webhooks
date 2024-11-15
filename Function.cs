@@ -44,7 +44,7 @@ namespace EsepWebhook
                 string issueUrl = json.issue.html_url;
 
                 // Prepare payload to send to Slack
-                string slackPayload = $"{{'text':'Issue Created: {issueUrl}'}}";
+                string slackPayload = $"{{\"text\":\"Issue Created: {issueUrl}\"}}";  // Updated to use double quotes
 
                 // Get Slack URL from environment variable
                 string slackUrl = Environment.GetEnvironmentVariable("SLACK_URL");
