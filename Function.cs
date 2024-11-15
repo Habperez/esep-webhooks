@@ -1,9 +1,6 @@
 using System;
-using System.IO;
 using System.Net.Http;
 using System.Text;
-using System.Threading.Tasks;
-using Amazon.Lambda.APIGatewayEvents;
 using Amazon.Lambda.Core;
 using Newtonsoft.Json;
 
@@ -17,66 +14,52 @@ namespace EsepWebhook
         private static readonly HttpClient HttpClient = new HttpClient();
 
         /// <summary>
-        /// A Lambda function that processes a GitHub webhook and posts information to Slack.
+        /// Handles incoming webhook from GitHub and sends a notification to Slack.
         /// </summary>
-        /// <param name="request">APIGatewayProxyRequest from API Gateway</param>
-        /// <param name="context">Lambda Context</param>
-        /// <returns>APIGatewayProxyResponse</returns>
-        public async Task<APIGatewayProxyResponse> FunctionHandler(APIGatewayProxyRequest request, ILambdaContext context)
+        /// <param name="input">The incoming GitHub event payload.</param>
+        /// <param name="context">Lambda context provided by AWS.</param>
+        /// <returns>Response message indicating success or failure.</returns>
+        public string FunctionHandler(object input, ILambdaContext context)
         {
+            context.Logger.LogLine($"Received input: {input}");
+
             try
             {
-                // Log the incoming request body
-                context.Logger.LogLine("Received GitHub webhook event.");
-                context.Logger.LogLine($"Request body: {request.Body}");
+                // Deserialize the GitHub payload
+                dynamic json = JsonConvert.DeserializeObject(input.ToString());
 
-                // Deserialize the incoming GitHub payload
-                dynamic json = JsonConvert.DeserializeObject(request.Body);
+                // Extract the issue URL
                 if (json.issue == null || json.issue.html_url == null)
                 {
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = 400,
-                        Body = "Invalid GitHub payload: issue or html_url is missing."
-                    };
+                    return "Invalid GitHub payload: 'issue' or 'html_url' is missing.";
                 }
-
                 string issueUrl = json.issue.html_url;
 
-                // Prepare payload to send to Slack
-                string slackPayload = $"{{\"text\":\"Issue Created: {issueUrl}\"}}";  // Updated to use double quotes
+                // Prepare the Slack message payload
+                string payload = $"{{\"text\":\"Issue Created: {issueUrl}\"}}";
 
-                // Get Slack URL from environment variable
+                // Get Slack webhook URL from environment variables
                 string slackUrl = Environment.GetEnvironmentVariable("SLACK_URL");
                 if (string.IsNullOrEmpty(slackUrl))
                 {
-                    throw new Exception("Missing Slack URL in environment variables.");
+                    throw new Exception("Slack URL not set in environment variables.");
                 }
 
-                // Post to Slack
+                // Send the request to Slack
                 var webRequest = new HttpRequestMessage(HttpMethod.Post, slackUrl)
                 {
-                    Content = new StringContent(slackPayload, Encoding.UTF8, "application/json")
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
                 };
 
-                HttpResponseMessage response = await HttpClient.SendAsync(webRequest);
+                HttpResponseMessage response = HttpClient.Send(webRequest);
                 response.EnsureSuccessStatusCode();
 
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = 200,
-                    Body = "Posted to Slack successfully!"
-                };
+                return "Posted to Slack successfully!";
             }
             catch (Exception ex)
             {
                 context.Logger.LogLine($"Error: {ex.Message}");
-
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = 500,
-                    Body = "Internal server error"
-                };
+                return "Failed to post to Slack.";
             }
         }
     }
